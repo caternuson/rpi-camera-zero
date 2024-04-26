@@ -10,5 +10,5 @@ Pi Zero W based time lapse camera
 * Python3
 * picamera2 - libcamera based Python camera control
 * Tornado - web server
-* JQuery - javascript helper
+* JQuery - javascript DOM helper
 * Bootstrap - mobile friendly CSS

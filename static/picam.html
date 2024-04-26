@@ -9,16 +9,73 @@
 <div class="container">
 <nav>
   <div class="nav nav-tabs" role="tablist">
-    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#control" type="button" role="tab">control</button>
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#config" type="button" role="tab">config</button>
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#preview" type="button" role="tab">preview</button>
+    <button id="tab_control" data-bs-target="#pane_control" class="nav-link active" data-bs-toggle="tab"  type="button" role="tab">control</button>
+    <button id="tab_config" data-bs-target="#pane_config" class="nav-link" data-bs-toggle="tab"  type="button" role="tab">config</button>
+    <button id="tab_preview" data-bs-target="#pane_preview" class="nav-link" data-bs-toggle="tab"  type="button" role="tab">preview</button>
   </div>
 </nav>
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="control" role="tabpanel">control</div>
-  <div class="tab-pane fade" id="config" role="tabpanel">config</div>
-  <div class="tab-pane fade" id="preview" role="tabpanel">preview</div>
+  <!----------------------------------------------------------------------
+                  T I M E L A P S E     C O N T R O L
+  ----------------------------------------------------------------------->
+  <div id="pane_control" class="tab-pane active" role="tabpanel">
+    control
+  </div>
+  <!----------------------------------------------------------------------
+                     C A M E R A     C O N F I G
+  ----------------------------------------------------------------------->
+  <div id="pane_config" class="tab-pane" role="tabpanel">
+    config
+  </div>
+  <!----------------------------------------------------------------------
+                       L I V E    P R E V I E W
+  ----------------------------------------------------------------------->
+  <div id="pane_preview" class="tab-pane" role="tabpanel">
+    <img id="liveview" class="img-responsive center-block" width="640" height="360"/>
+  </div>
 </div>
 </div>
+<!----------------------------------------------------------------------
+                        J A V A S C R I P T
+----------------------------------------------------------------------->
+<script>
+$(document).ready(function () {
+  alert(" ready ");
+});
+$(".nav-link").on("hide.bs.tab", function(e) {
+  //alert("hide: " + e.target.id);
+  if (e.target.id === "tab_preview") {
+    //alert("stop preview");
+    $.ajax({
+      url: "/ajax",
+      type: "POST",
+      dataType: "json",
+      data: JSON.stringify({
+        "CMD":"XPV", 
+      }),
+    })
+    .done(function(json) {
+      alert(json.ERR);
+    })
+  }
+});
+$(".nav-link").on("shown.bs.tab", function(e) {
+  //alert("shown: " + e.target.id);
+  if (e.target.id === "tab_preview") {
+    //alert("start perview");
+    $.ajax({
+      url: "/ajax",
+      type: "POST",
+      dataType: "json",
+      data: JSON.stringify({
+        "CMD":"SPV",
+      }),
+    })
+    .done(function(json) {
+      alert(json.URL);
+    })
+  }
+});
+</script>
 </body>
 </html>
