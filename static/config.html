@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <link href={{ static_url("css/bootstrap.min.css") }} rel="stylesheet">
+  <script src={{ static_url("js/jquery.min.js") }}></script>
+  <script src={{ static_url("js/bootstrap.bundle.min.js") }}></script>
+</head>
+<body class="bd-docs">
+<div class="container">
+<nav>
+  <div class="nav nav-tabs" role="tablist">
+    <button id="tab_control" data-bs-target="#pane_control" class="nav-link active" data-bs-toggle="tab"  type="button" role="tab">control</button>
+    <button id="tab_config" data-bs-target="#pane_config" class="nav-link" data-bs-toggle="tab"  type="button" role="tab">config</button>
+    <button id="tab_preview" data-bs-target="#pane_preview" class="nav-link" data-bs-toggle="tab"  type="button" role="tab">preview</button>
+  </div>
+</nav>
+<div class="tab-content">
+  <!----------------------------------------------------------------------
+                  T I M E L A P S E     C O N T R O L
+  ----------------------------------------------------------------------->
+<div id="pane_control" class="tab-pane active" role="tabpanel">
+<form>
+  <div class="form-group">
+    <label>DELTA TIME (secs)</label>
+    <input id="tl_delta_time" class="form-control" type="number" value="0"/>
+  </div>
+  <div class="form-group">
+    <label>NUMBER OF IMAGES</label>
+    <input id="tl_delta_time" class="form-control" type="number" value="0"/>
+  </div>
+</form>
+<button id="tl_start" class="btn btn-success btn-lg center-block">
+  START
+</button>
+</div>
+
+  <!----------------------------------------------------------------------
+                     C A M E R A     C O N F I G
+  ----------------------------------------------------------------------->
+<div id="pane_config" class="tab-pane" role="tabpanel">
+<form>
+<div class="form-group">
+  <label>SHUTTER SPEED</label>
+  <select id="cam_shutter" class="form-control">
+    <option value="0">AUTO</option>
+    <option value='2000000' >2'</option>
+    <option value='1000000' >1'</option>
+    <option value='500000'  >1/2</option>
+    <option value='250000'  >1/4</option>
+    <option value='125000'  >1/8</option>
+    <option value='62500'   >1/16</option>
+    <option value='31250'   >1/32</option>
+    <option value='15625'   >1/64</option>
+    <option value='7813'    >1/128</option>
+    <option value='3906'    >1/256</option>
+    <option value='1953'    >1/512</option>
+    <option value='978'     >1/1024</option>
+    <option value='489'     >1/2048</option>
+    <option value='400'     >400us</option>
+    <option value='350'     >350us</option>
+    <option value='300'     >300us</option>
+    <option value='250'     >250us</option>
+    <option value='200'     >200us</option>
+    <option value='150'     >150us</option>
+    <option value='100'     >100us</option>
+  </select>
+</div>
+<div class="form-group">
+  <label>ISO</label>
+  <select id="cam_iso" class="form-control">
+    <option value='0'   >AUTO</option>
+    <option value='100' >100</option>
+    <option value='200' >200</option>
+    <option value='320' >320</option>
+    <option value='400' >400</option>
+    <option value='500' >500</option>
+    <option value='640' >640</option>
+    <option value='800' >800</option>
+  </select>
+</div>
+</form>
+<p>
+<button id="cam_take" class="btn btn-success btn-lg center-block">TAKE</button>
+</p>
+<img id="cam_image" src="static/nyan.gif" class="img-responsive center-block"/>
+</div>
+
+  <!----------------------------------------------------------------------
+                       L I V E    P R E V I E W
+  ----------------------------------------------------------------------->
+<div id="pane_preview" class="tab-pane" role="tabpanel">
+  <img id="liveview" class="img-responsive center-block" width="640" height="360"/>
+</div>
+
+</div>
+</div>
+
+<!----------------------------------------------------------------------
+                        J A V A S C R I P T
+----------------------------------------------------------------------->
+<script>
+$(document).ready(function () {
+  $("#tl_start").click(function (event) {
+    start_timelapse();
+  });
+  $("#cam_take").click(function (event) {
+    take_image();
+  });
+});
+
+$(".nav-link").on("hide.bs.tab", function(e) {
+  if (e.target.id === "tab_preview") {
+    // TODO: send start preview command
+  }
+});
+
+$(".nav-link").on("shown.bs.tab", function(e) {
+  if (e.target.id === "tab_preview") {
+    // TODO: send stop preview command
+  }
+});
+
+function start_timelapse() {
+  if (window.confirm("START TIMELAPSE?")) {
+    ajax_cmd("STA")
+  }
+  return false;
+}
+
+function take_image() {
+  $("#cam_image").attr("src", "static/spinner.gif")
+  ajax_cmd("TAK")
+}
+
+function ajax_cmd(command) {
+  $.ajax({
+    url: "/",
+    type: "POST",
+    dataType: "json",
+    data: JSON.stringify({
+      "CMD":command,
+    }),
+  })
+ .done(function(json) {
+    ajax_resp(json)
+  })
+}
+
+function ajax_resp(json) {
+  //TODO: handle respone
+  //alert(json['ERR'])
+  if (json['ERR'] != "0") {
+    alert("ERROR!")
+    return;
+  }
+  if ("URL" in json) {
+    $("#cam_image").attr("src", json['URL'])
+  }
+}
+
+</script>
+</body>
+</html>
