@@ -4,11 +4,78 @@ import json
 import asyncio
 import tornado
 from picamera2 import Picamera2
+from PIL import Image, ImageDraw
 
 picam2 = Picamera2()
 config = picam2.create_still_configuration( {"size":(1920, 1080)} )
 picam2.configure(config)
+picam2.controls.AeEnable = False
+picam2.controls.AwbEnable = False
 picam2.start()
+
+# TODO: tweak these
+picam2.controls.Brightness = 0.0  # -1.0 to 1.0 (0.0)
+picam2.controls.Contrast = 1.0 # 0.0 to 32.0 (1.0)
+picam2.controls.Saturation = 1.0 # 0.0 to 32.0 (1.0)
+picam2.controls.Sharpness = 1.0 # 0.0 to 16.0 (1.0)
+picam2.controls.ExposureTime = 5000000
+
+#====================================================================
+#                  S U P P O R T    F U N C T I O N S
+#====================================================================
+def capture_with_histogram(filename):
+        """Capture an image with histogram overlay and save to specified file.
+        Returns dictionary of camera settings used for original image.
+        """
+        # capture then open in PIL image
+        hname = 'hist_' + time.strftime("%H%M%S", time.localtime()) + '.jpg'
+        settings = picam2.capture_file(hname)
+        im_in   = Image.open(hname)
+        im_out  = Image.new('RGB', im_in.size)
+        im_out.paste(im_in)
+        width, height = im_out.size
+        draw = ImageDraw.Draw(im_out)
+
+        # add rule of thirds lines
+        x1 = width/3
+        x2 = 2*x1
+        y1 = height/3
+        y2 = 2*y1
+        draw.line([(x1,0),(x1,height)], width=3)
+        draw.line([(x2,0),(x2,height)], width=3)
+        draw.line([(0,y1),(width,y1)], width=3)
+        draw.line([(0,y2),(width,y2)], width=3)
+
+        # compute histogram, scaled for image size
+        hist = im_in.histogram()
+        rh = hist[0:256]
+        gh = hist[256:512]
+        bh = hist[512:768]
+        xs = float(width)/float(256)
+        ys = float(height)/float(max(hist))
+        rl=[]
+        gl=[]
+        bl=[]
+        for i in range(256):
+            rl.append((int(i*xs),height-int(rh[i]*ys)))
+            gl.append((int(i*xs),height-int(gh[i]*ys)))
+            bl.append((int(i*xs),height-int(bh[i]*ys)))
+        # draw it
+        lw = int((0.01*max(im_out.size)))
+        draw.line(rl, fill='red', width=lw, joint='curve')
+        draw.line(gl, fill='green', width=lw, joint='curve')
+        draw.line(bl, fill='blue', width=lw, joint='curve')
+
+        # save it and clean up
+        im_out.save(filename, quality=95)
+        os.remove(hname)
+
+        return settings
+
+
+#====================================================================
+#                        W E B    S E R V E R
+#====================================================================
 
 class MainHandler(tornado.web.RequestHandler):
 
@@ -49,8 +116,8 @@ class MainHandler(tornado.web.RequestHandler):
         elif cmd == "TAK":
             # take an image
             filename = "static/preview.jpg"
+            settings = capture_with_histogram(filename)
             url = "{}?{}".format(filename, time.time()) # prevent using cached image
-            settings = picam2.capture_file(filename)
             resp["URL"] = url
             resp["SET"] = settings
         else:
