@@ -11,14 +11,13 @@ config = picam2.create_still_configuration( {"size":(1920, 1080)} )
 picam2.configure(config)
 picam2.controls.AeEnable = False
 picam2.controls.AwbEnable = False
-picam2.start()
 
 # TODO: tweak these
 picam2.controls.Brightness = 0.0  # -1.0 to 1.0 (0.0)
 picam2.controls.Contrast = 1.0 # 0.0 to 32.0 (1.0)
 picam2.controls.Saturation = 1.0 # 0.0 to 32.0 (1.0)
 picam2.controls.Sharpness = 1.0 # 0.0 to 16.0 (1.0)
-picam2.controls.ExposureTime = 5000000
+picam2.controls.ExposureTime = 1000000
 
 #====================================================================
 #                  S U P P O R T    F U N C T I O N S
@@ -29,7 +28,9 @@ def capture_with_histogram(filename):
         """
         # capture then open in PIL image
         hname = 'hist_' + time.strftime("%H%M%S", time.localtime()) + '.jpg'
+        picam2.start()
         settings = picam2.capture_file(hname)
+        picam2.stop()
         im_in   = Image.open(hname)
         im_out  = Image.new('RGB', im_in.size)
         im_out.paste(im_in)
@@ -90,17 +91,18 @@ class MainHandler(tornado.web.RequestHandler):
             #print("config")
 
     def post(self):
-        resp = {"ERR":0}
+        resp = {"ERR":0} # 0=success
         data = json.loads(self.request.body)
-        #print(data)
+        print(data)
         cmd = data.get("CMD", None)
         if cmd is None:
+            # invalid request
             resp["ERR"] = 1
             self.write(json.dumps(resp))
             return
         if cmd == "SPV":
             # start preview
-            resp["URL"] = "http://blah.8081"
+            pass
         elif cmd == "XPV":
             #stop preview
             pass
@@ -113,14 +115,22 @@ class MainHandler(tornado.web.RequestHandler):
         elif cmd == "TIM":
             # return system time
             resp["TIME"] = time.time()
-        elif cmd == "TAK":
-            # take an image
+        elif cmd == "HST":
+            # take a histogram overlay image
             filename = "static/preview.jpg"
             settings = capture_with_histogram(filename)
             url = "{}?{}".format(filename, time.time()) # prevent using cached image
             resp["URL"] = url
-            resp["SET"] = settings
+            resp["SET"] = json.dumps(settings)
+        elif cmd == "CAM":
+            # configure camera
+            cam_shutter = int(data.get("cam_shutter", "20000"))
+            cam_gain = float(data.get("cam_gain", "0"))
+            print("shutter:{}  gain:{}".format(cam_shutter, cam_gain))
+            picam2.controls.ExposureTime = cam_shutter
+            picam2.controls.AnalogueGain = cam_gain
         else:
+            # unknown command
             resp["ERR"] = 2
         self.write(json.dumps(resp))
 
