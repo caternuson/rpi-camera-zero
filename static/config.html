@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href={{ static_url("css/bootstrap.min.css") }} rel="stylesheet">
   <script src={{ static_url("js/jquery.min.js") }}></script>
   <script src={{ static_url("js/bootstrap.bundle.min.js") }}></script>
@@ -38,52 +39,18 @@
                      C A M E R A     C O N F I G
   ----------------------------------------------------------------------->
 <div id="pane_config" class="tab-pane" role="tabpanel">
-<form>
-<div class="form-group">
-  <label>SHUTTER SPEED</label>
-  <select id="cam_shutter" class="form-control">
-    <option value="0">AUTO</option>
-    <option value='2000000' >2'</option>
-    <option value='1000000' >1'</option>
-    <option value='500000'  >1/2</option>
-    <option value='250000'  >1/4</option>
-    <option value='125000'  >1/8</option>
-    <option value='62500'   >1/16</option>
-    <option value='31250'   >1/32</option>
-    <option value='15625'   >1/64</option>
-    <option value='7813'    >1/128</option>
-    <option value='3906'    >1/256</option>
-    <option value='1953'    >1/512</option>
-    <option value='978'     >1/1024</option>
-    <option value='489'     >1/2048</option>
-    <option value='400'     >400us</option>
-    <option value='350'     >350us</option>
-    <option value='300'     >300us</option>
-    <option value='250'     >250us</option>
-    <option value='200'     >200us</option>
-    <option value='150'     >150us</option>
-    <option value='100'     >100us</option>
-  </select>
-</div>
-<div class="form-group">
-  <label>ISO</label>
-  <select id="cam_iso" class="form-control">
-    <option value='0'   >AUTO</option>
-    <option value='100' >100</option>
-    <option value='200' >200</option>
-    <option value='320' >320</option>
-    <option value='400' >400</option>
-    <option value='500' >500</option>
-    <option value='640' >640</option>
-    <option value='800' >800</option>
-  </select>
-</div>
-</form>
+<label for="cam_shutter" class="form-label">Exposure Time</label>
+<input id="cam_shutter" class="form-range" type="range" min="75" max="1238765" step="1"/>
+<label for="cam_gain" class="form-label">Analog Gain</label>
+<input id="cam_gain" class="form-range" type="range" min="1" max="10" step="0.1"/>
 <p>
-<button id="cam_take" class="btn btn-success btn-lg center-block">TAKE</button>
+<div class="text-center"><button id="cam_take" class="btn btn-success btn-lg">TAKE</button></div>
 </p>
 <div class="text-center">
-<img id="cam_image" src="static/nyan.gif" class="img-fluid.max-width: 100%"/>
+<img id="cam_image" src="static/nyan.gif" class="img-fluid"/>
+<p id="cam_settings" class="font-monospace">
+no info
+</p>
 </div>
 </div>
 
@@ -91,7 +58,7 @@
                        L I V E    P R E V I E W
   ----------------------------------------------------------------------->
 <div id="pane_preview" class="tab-pane" role="tabpanel">
-  <img id="liveview" class="img-responsive center-block" width="640" height="360"/>
+  <img id="liveview" class="img-fluid center-block" width="640" height="360"/>
 </div>
 
 </div>
@@ -105,6 +72,12 @@ $(document).ready(function () {
   $("#tl_start").click(function (event) {
     start_timelapse();
   });
+  // $("#cam_shutter").change(function (event) {
+  //   send_config();
+  // });
+  // $("#cam_iso").change(function (event) {
+  //   send_config();
+  // });
   $("#cam_take").click(function (event) {
     take_image();
   });
@@ -124,39 +97,62 @@ $(".nav-link").on("shown.bs.tab", function(e) {
 
 function start_timelapse() {
   if (window.confirm("START TIMELAPSE?")) {
-    ajax_cmd("STA")
+    //TODO: start time lapse
   }
   return false;
 }
 
 function take_image() {
-  $("#cam_image").attr("src", "static/spinner.gif")
-  ajax_cmd("TAK")
+  $("#cam_image").attr("src", "static/spinner.gif");
+  send_config();
+  ajax_json_send({
+    CMD: "HST",
+  });
+
 }
 
-function ajax_cmd(command) {
+function send_config() {
+  ajax_json_send({
+    CMD: "CAM",
+    cam_shutter: $("#cam_shutter").val(),
+    cam_gain: $("#cam_gain").val(),
+  });
+}
+
+//-----------
+//  A J A X
+//-----------
+function ajax_json_send(data) {
   $.ajax({
     url: "/",
     type: "POST",
     dataType: "json",
-    data: JSON.stringify({
-      "CMD":command,
-    }),
+    data: JSON.stringify(data),
   })
  .done(function(json) {
-    ajax_resp(json)
+    ajax_json_resp(json);
   })
 }
 
-function ajax_resp(json) {
-  //TODO: handle respone
-  //alert(json['ERR'])
-  if (json['ERR'] != "0") {
-    alert("ERROR!")
+function ajax_json_resp(json) {
+  // invalid response
+  if (!"ERR" in json) {
+    alert("Invalid response sent.");
+    return;
+  // handle errors, success is ERR=0
+  }
+  if (json['ERR'] != 0) {
+    //TODO: actually handle error
+    alert("ERROR: " + json['ERR']);
     return;
   }
+  // success! (of some kind)
   if ("URL" in json) {
     $("#cam_image").attr("src", json['URL'])
+    settings = JSON.parse(json['SET'])
+    txt  = "ExposureTime: " + settings.ExposureTime + "  "
+    txt += "AnalogueGain: " + settings.AnalogueGain
+    $("#cam_settings").text(txt)
   }
 }
 
