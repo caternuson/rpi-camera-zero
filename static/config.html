@@ -27,7 +27,7 @@
   </div>
   <div class="form-group">
     <label>NUMBER OF IMAGES</label>
-    <input id="tl_delta_time" class="form-control" type="number" value="0"/>
+    <input id="tl_total_imgs" class="form-control" type="number" value="0"/>
   </div>
 </form>
 <button id="tl_start" class="btn btn-success btn-lg center-block">
@@ -69,12 +69,8 @@ no info
 ----------------------------------------------------------------------->
 <script>
 $(document).ready(function () {
-  $("#tl_start").click(function (event) {
-    start_timelapse();
-  });
-  $("#cam_take").click(function (event) {
-    take_image();
-  });
+  $("#tl_start").click(start_timelapse)
+  $("#cam_take").click(take_image)
 });
 
 $(".nav-link").on("hide.bs.tab", function(e) {
@@ -91,7 +87,13 @@ $(".nav-link").on("shown.bs.tab", function(e) {
 
 function start_timelapse() {
   if (window.confirm("START TIMELAPSE?")) {
-    //TODO: start time lapse
+    ajax_json_send({
+      CMD: "STA",
+      CFG: {
+        "delta_time": $("#tl_delta_time").val(),
+        "total_imgs": $("#tl_total_imgs").val()
+      }
+    });
   }
   return false;
 }
@@ -142,11 +144,17 @@ function ajax_json_resp(json) {
   }
   // success! (of some kind)
   if ("URL" in json) {
+    // URL is location of preview image
+    // SET will having settings
     $("#cam_image").attr("src", json['URL'])
     settings = JSON.parse(json['SET'])
     txt  = "ExposureTime: " + settings.ExposureTime + "  "
     txt += "AnalogueGain: " + settings.AnalogueGain
     $("#cam_settings").text(txt)
+  }
+  if ("STA" in json) {
+    // a timelapse has been started
+    location.reload()
   }
 }
 
