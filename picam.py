@@ -1,15 +1,20 @@
 import time
 import os
+import io
 import json
 import asyncio
 import threading
+import socketserver
+from http import server
 import tornado
 from picamera2 import Picamera2
+from picamera2.encoders import JpegEncoder
+from picamera2.outputs import FileOutput
 from PIL import Image, ImageDraw
 
 picam2 = Picamera2()
-config = picam2.create_still_configuration( {"size":(1920, 1080)} )
-picam2.configure(config)
+STILL_CONFIG = picam2.create_still_configuration( {"size":(1920, 1080)} )
+picam2.configure(STILL_CONFIG)
 picam2.controls.AeEnable = False
 picam2.controls.AwbEnable = False
 
@@ -154,6 +159,79 @@ class TimeLapser(threading.Thread):
     def status(self):
         return self._status
 
+#######################
+#####  M J P E G ######
+#######################
+class MjpegStreamingOutput(io.BufferedIOBase):
+    def __init__(self):
+        self.frame = None
+        self.condition = threading.Condition()
+
+    def write(self, buf):
+        with self.condition:
+            self.frame = buf
+            self.condition.notify_all()
+
+class MjpegStreamingHandler(server.BaseHTTPRequestHandler):
+
+    output = None # MjpegStreamingOutput()
+    keep_streaming = False
+
+    def do_GET(self):
+        print("mjpeg GET")
+        self.send_response(200)
+        self.send_header('Age', 0)
+        self.send_header('Cache-Control', 'no-cache, private')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
+        self.end_headers()
+        try:
+            while MjpegStreamingHandler.keep_streaming:
+                with MjpegStreamingHandler.output.condition:
+                    MjpegStreamingHandler.output.condition.wait()
+                    frame = MjpegStreamingHandler.output.frame
+                self.wfile.write(b'--FRAME\r\n')
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', len(frame))
+                self.end_headers()
+                self.wfile.write(frame)
+                self.wfile.write(b'\r\n')
+        except Exception as e:
+            print("mjpeg streamer exception")
+
+class Mjpeger(threading.Thread):
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None):
+        threading.Thread.__init__(self, group=group, target=target, name=name)
+
+        self.camera = kwargs.get('camera', None)
+        self.keep_running = False
+
+    def run(self):
+        # configure camera for mjpeg stream and start it
+        self.camera.configure(self.camera.create_video_configuration({"size": (640, 360)}))
+        MjpegStreamingHandler.output = MjpegStreamingOutput()
+        self.camera.start_recording(JpegEncoder(), FileOutput(MjpegStreamingHandler.output))
+
+        # run server
+        MjpegStreamingHandler.keep_streaming = True
+        mjpegserver = server.HTTPServer( ('',8889), MjpegStreamingHandler)
+        mjpegserver.timeout = 1
+        self.keep_running = True
+        try:
+            while self.keep_running:
+                mjpegserver.handle_request()
+        except Exception as e:
+            print("mjpegger thread exception")
+        mjpegserver.server_close()
+
+        # stop camera
+        self.camera.stop_recording()
+
+    def stop(self):
+        MjpegStreamingHandler.keep_streaming = False
+        self.keep_running = False
+
+
 #====================================================================
 #                        W E B    S E R V E R
 #====================================================================
@@ -161,8 +239,7 @@ class TimeLapser(threading.Thread):
 class MainHandler(tornado.web.RequestHandler):
 
     timelapser = None
-    delta_time = None
-    total_imgs = None
+    mjpeger = None
 
     def get(self):
         time_lapse_running = False
@@ -176,7 +253,7 @@ class MainHandler(tornado.web.RequestHandler):
 
     def post(self):
         data = json.loads(self.request.body)
-        #print(data)
+        print(data)
         cmd = data.get("CMD", None)
         resp = {"ERR":0} # 0=success
 
@@ -191,12 +268,12 @@ class MainHandler(tornado.web.RequestHandler):
             #-------------------
             # start preview
             #-------------------
-            pass
+            resp["SPV"] = self.__start_mjpeg()
         elif cmd == "XPV":
             #-------------------
             #stop preview
             #-------------------
-            pass
+            resp["XPV"] = self.__stop_mjpeg()
         elif cmd == "STA":
             #-------------------
             # start time lapse
@@ -207,8 +284,6 @@ class MainHandler(tornado.web.RequestHandler):
             print(delta_time, total_imgs)
             self.__start_timelapse(delta_time, total_imgs)
             resp["STA"] = True
-            #self.render("status.html")
-            #return
         elif cmd == "STO":
             #-------------------
             # stop time lapse
@@ -255,27 +330,52 @@ class MainHandler(tornado.web.RequestHandler):
         self.write(json.dumps(resp))
 
     def __start_timelapse(self, delta_time, total_imgs):
-        # does it exist?
         if MainHandler.timelapser is not None:
-            # it exists, is it done?
             if not MainHandler.timelapser.is_alive():
-                # throw it away
                 MainHandler.timelapser = None
-        # does it not exist?
         if MainHandler.timelapser is None:
-            # create it
             MainHandler.timelapser = TimeLapser(kwargs={
                 'camera': picam2,
                 'delta_time' : delta_time,
                 'total_imgs' : total_imgs,
             })
-            # start it
             MainHandler.timelapser.start()
 
     def __stop_timelapse(self):
         if MainHandler.timelapser is not None:
             MainHandler.timelapser.stop()
             MainHandler.timelapser = None
+
+    def __start_mjpeg(self):
+        if MainHandler.mjpeger is not None:
+            if not MainHandler.mjpeger.is_alive():
+                MainHandler.mjpeger = None
+        if MainHandler.mjpeger is None:
+            MainHandler.mjpeger = Mjpeger(kwargs={
+                'camera': picam2,
+            })
+            # start thread
+            MainHandler.mjpeger.start()
+            # wait for server to start
+            while not MainHandler.mjpeger.keep_running:
+                pass
+            host = self.request.host.partition(":")[0]
+            url = "http://{}:8889/?{}".format(host, time.time()) # prevent using cached image
+            return url
+        return None
+
+
+    def __stop_mjpeg(self):
+        if MainHandler.mjpeger is not None:
+            MainHandler.mjpeger.stop()
+            # wait for thread to stop
+            while MainHandler.mjpeger.is_alive():
+                pass
+            MainHandler.mjpeger = None
+        picam2.configure(STILL_CONFIG)
+        picam2.controls.AeEnable = False
+        picam2.controls.AwbEnable = False
+        return "static/nyan.gif"
 
 
 async def main():

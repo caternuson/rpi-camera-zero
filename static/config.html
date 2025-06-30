@@ -58,7 +58,9 @@ no info
                        L I V E    P R E V I E W
   ----------------------------------------------------------------------->
 <div id="pane_preview" class="tab-pane" role="tabpanel">
-  <img id="liveview" class="img-fluid center-block" width="640" height="360"/>
+<div class="text-center">
+<img id="liveview" class="img-fluid" src="static/nyan.gif"/>
+</div>
 </div>
 
 </div>
@@ -73,15 +75,19 @@ $(document).ready(function () {
   $("#cam_take").click(take_image)
 });
 
-$(".nav-link").on("hide.bs.tab", function(e) {
+$(".nav-link").on("shown.bs.tab", function(e) {
   if (e.target.id === "tab_preview") {
-    // TODO: send start preview command
+    ajax_json_send({
+      CMD: "SPV",
+    });
   }
 });
 
-$(".nav-link").on("shown.bs.tab", function(e) {
+$(".nav-link").on("hide.bs.tab", function(e) {
   if (e.target.id === "tab_preview") {
-    // TODO: send stop preview command
+    ajax_json_send({
+      CMD: "XPV",
+    });
   }
 });
 
@@ -99,7 +105,7 @@ function start_timelapse() {
 }
 
 function take_image() {
-  $("#cam_image").attr("src", "static/spinner.gif");
+  $("#cam_image").attr("src", "static/nyan.gif");
   send_config();
   ajax_json_send({
     CMD: "HST",
@@ -145,16 +151,23 @@ function ajax_json_resp(json) {
   // success! (of some kind)
   if ("URL" in json) {
     // URL is location of preview image
-    // SET will having settings
+    // SET will having camera settings
     $("#cam_image").attr("src", json['URL'])
-    settings = JSON.parse(json['SET'])
-    txt  = "ExposureTime: " + settings.ExposureTime + "  "
-    txt += "AnalogueGain: " + settings.AnalogueGain
-    $("#cam_settings").text(txt)
+    $("#cam_settings").text(JSON.stringify(json['SET']))
   }
   if ("STA" in json) {
     // a timelapse has been started
     location.reload()
+  }
+  if ("SPV" in json) {
+    // mjpeg stream has been started
+    console.log("SPV:"+json['SPV'])
+    $("#liveview").attr("src", json['SPV'])
+  }
+  if ("XPV" in json) {
+    // mjpeg stream hasbeen stopped
+    console.log("XPV:"+json['XPV'])
+    $("#liveview").attr("src", json['XPV'])
   }
 }
 
