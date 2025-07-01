@@ -13,6 +13,7 @@ from picamera2.outputs import FileOutput
 from PIL import Image, ImageDraw
 
 picam2 = Picamera2()
+VIDEO_CONFIG = picam2.create_video_configuration( {"size": (640, 360)} )
 STILL_CONFIG = picam2.create_still_configuration( {"size":(1920, 1080)} )
 picam2.configure(STILL_CONFIG)
 picam2.controls.AeEnable = False
@@ -32,6 +33,7 @@ def capture_with_histogram(filename):
         """Capture an image with histogram overlay and save to specified file.
         Returns dictionary of camera settings used for original image.
         """
+        filename = os.path.join(os.path.dirname(__file__), filename)
         # capture then open in PIL image
         hname = 'hist_' + time.strftime("%H%M%S", time.localtime()) + '.jpg'
         picam2.start()
@@ -104,7 +106,7 @@ class TimeLapser(threading.Thread):
         self._status["running"] = True
 
         # make a new directory for images
-        DIR = os.path.join(os.getcwd(), self._status["name"])
+        DIR = os.path.join(os.path.dirname(__file__), self._status["name"])
         os.mkdir(DIR)
 
         # dump info to file
@@ -174,7 +176,7 @@ class MjpegStreamingOutput(io.BufferedIOBase):
 
 class MjpegStreamingHandler(server.BaseHTTPRequestHandler):
 
-    output = None # MjpegStreamingOutput()
+    output = MjpegStreamingOutput()
     keep_streaming = False
 
     def do_GET(self):
@@ -204,24 +206,19 @@ class Mjpeger(threading.Thread):
         threading.Thread.__init__(self, group=group, target=target, name=name)
 
         self.camera = kwargs.get('camera', None)
-        self.keep_running = False
+        self.server_started = False
 
     def run(self):
-        # configure camera for mjpeg stream and start it
-        self.camera.configure(self.camera.create_video_configuration({"size": (640, 360)}))
-        MjpegStreamingHandler.output = MjpegStreamingOutput()
+        # start camera
+        self.camera.configure(VIDEO_CONFIG)
         self.camera.start_recording(JpegEncoder(), FileOutput(MjpegStreamingHandler.output))
 
         # run server
-        MjpegStreamingHandler.keep_streaming = True
         mjpegserver = server.HTTPServer( ('',8889), MjpegStreamingHandler)
         mjpegserver.timeout = 1
-        self.keep_running = True
-        try:
-            while self.keep_running:
-                mjpegserver.handle_request()
-        except Exception as e:
-            print("mjpegger thread exception")
+        MjpegStreamingHandler.keep_streaming = True
+        while MjpegStreamingHandler.keep_streaming:
+            mjpegserver.handle_request()
         mjpegserver.server_close()
 
         # stop camera
@@ -229,7 +226,6 @@ class Mjpeger(threading.Thread):
 
     def stop(self):
         MjpegStreamingHandler.keep_streaming = False
-        self.keep_running = False
 
 
 #====================================================================
@@ -357,7 +353,7 @@ class MainHandler(tornado.web.RequestHandler):
             # start thread
             MainHandler.mjpeger.start()
             # wait for server to start
-            while not MainHandler.mjpeger.keep_running:
+            while not MjpegStreamingHandler.keep_streaming:
                 pass
             host = self.request.host.partition(":")[0]
             url = "http://{}:8889/?{}".format(host, time.time()) # prevent using cached image
